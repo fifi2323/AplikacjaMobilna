@@ -22,11 +22,30 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Delete
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.example.aplikacjemobilne.ui.theme.AplikacjeMobilneTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+/*
+        val db = Room.databaseBuilder(
+            applicationContext,
+            AppDatabase::class.java, "database"
+        ).build()*/
+
+    //    val cocktailDao = db.cocktailDao()
+      //  cocktailDao.insertAll(Cocktail(name = "Mojito", details = "Minty drink")  )
+
         enableEdgeToEdge()
         setContent {
             AplikacjeMobilneTheme {
@@ -34,6 +53,34 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@Entity
+data class Cocktail(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "name") val name: String?,
+    @ColumnInfo(name = "details") val details: String?
+)
+
+@Dao
+interface CocktailDao {
+    @Query("SELECT * FROM cocktail")
+    suspend fun getAll(): List<Cocktail>
+
+
+    @Query("SELECT * FROM cocktail WHERE name LIKE :name")
+    suspend fun findByName(name: String): Cocktail
+
+    @Insert
+    fun insertAll(vararg cocktail: Cocktail)
+
+    @Delete
+    suspend fun delete(cocktail: Cocktail)
+}
+
+@Database(entities = [Cocktail::class], version = 1)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun cocktailDao(): CocktailDao
 }
 
 @Composable
