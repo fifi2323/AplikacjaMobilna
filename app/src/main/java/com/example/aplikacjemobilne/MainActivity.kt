@@ -42,7 +42,7 @@ fun CocktailList(navController: NavController, modifier: Modifier = Modifier) {
         listOf("Mojito", "Margarita", "Old Fashioned", "Daiquiri", "Negroni")
     }
 
-    LazyColumn(modifier = modifier.padding(16.dp)) {
+    LazyColumn(modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 32.dp)) {
         items(cocktails) { cocktail ->
             Text(
                 text = cocktail,
@@ -60,14 +60,51 @@ fun CocktailList(navController: NavController, modifier: Modifier = Modifier) {
 
 @Composable
 fun CocktailDetail(navController: NavController, cocktailName: String?) {
+    val cocktailsDetails = remember {
+        mapOf(
+            "Mojito" to Pair(
+                listOf("50ml Rum", "Soda", "Limonka", "Mięta", "Cukier"),
+                "Rozgnieć limonkę z cukrem, dodaj miętę, rum, lód i dopełnij sodą."
+            ),
+            "Margarita" to Pair(
+                listOf("50ml Tequila", "20ml Triple sec", "20ml Sok z limonki", "Sól"),
+                "Wymieszaj składniki w shakerze, przelej do kieliszka z solą na rancie."
+            ),
+            "Old Fashioned" to Pair(
+                listOf("50ml Bourbon", "Kostka cukru", "Angostura", "Woda"),
+                "Rozpuść cukier z Angosturą, dodaj lód i bourbon, zamieszaj."
+            ),
+            "Daiquiri" to Pair(
+                listOf("50ml Rum", "25ml Sok z limonki", "15ml Syrop cukrowy"),
+                "Wymieszaj w shakerze i przelej do schłodzonego kieliszka."
+            ),
+            "Negroni" to Pair(
+                listOf("30ml Gin", "30ml Campari", "30ml Wermut czerwony"),
+                "Wymieszaj składniki w szklance z lodem, udekoruj pomarańczą."
+            )
+        )
+    }
+
+    val (ingredients, preparation) = cocktailsDetails[cocktailName] ?: Pair(emptyList(), "Brak danych")
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(50.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 32.dp)
     ) {
         Text(text = "Cocktail Details", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Selected: $cocktailName", style = MaterialTheme.typography.bodyLarge)
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Ingredients:", style = MaterialTheme.typography.titleMedium)
+        ingredients.forEach { ingredient ->
+            Text(text = "- $ingredient", style = MaterialTheme.typography.bodyLarge)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Preparation:", style = MaterialTheme.typography.titleMedium)
+        Text(text = preparation, style = MaterialTheme.typography.bodyLarge)
 
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = { navController.popBackStack() }) {
@@ -75,6 +112,7 @@ fun CocktailDetail(navController: NavController, cocktailName: String?) {
         }
     }
 }
+
 
 @Composable
 fun AppNavigation() {
