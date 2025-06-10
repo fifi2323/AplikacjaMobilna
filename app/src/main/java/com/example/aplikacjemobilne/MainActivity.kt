@@ -10,11 +10,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,6 +30,7 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,9 @@ import androidx.navigation.navArgument
 import com.example.aplikacjemobilne.ui.theme.AplikacjeMobilneTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import coil.compose.AsyncImage
+import com.example.aplikacjemobilne.model.Drink
+
 
 class MainActivity : ComponentActivity() {
     private val viewModel: CocktailViewModel by viewModels()
@@ -82,11 +88,55 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-data class Cocktail(
+
+// to be deleted
+data class CocktailLocalDB(
     val name: String,
     val imageRes: Int? = null,  // Make image resource nullable
     val isFavorite: Boolean
 )
+
+data class Cocktail(
+    val name: String,
+    val imageUrl: String,
+    val instructions: String,
+    val isFavorite: Boolean,
+    val ingredients: List<String> = emptyList()
+)
+
+fun Drink.toCocktail(): Cocktail {
+    val ingredients = listOfNotNull(
+        formatIngredient(strIngredient1, strMeasure1),
+        formatIngredient(strIngredient2, strMeasure2),
+        formatIngredient(strIngredient3, strMeasure3),
+        formatIngredient(strIngredient4, strMeasure4),
+        formatIngredient(strIngredient5, strMeasure5),
+        formatIngredient(strIngredient6, strMeasure6),
+        formatIngredient(strIngredient7, strMeasure7),
+        formatIngredient(strIngredient8, strMeasure8),
+        formatIngredient(strIngredient9, strMeasure9),
+        formatIngredient(strIngredient10, strMeasure10),
+        formatIngredient(strIngredient11, strMeasure11),
+        formatIngredient(strIngredient12, strMeasure12),
+        formatIngredient(strIngredient13, strMeasure13),
+        formatIngredient(strIngredient14, strMeasure14),
+        formatIngredient(strIngredient15, strMeasure15)
+    )
+
+    return Cocktail(
+        name = strDrink.orEmpty(),
+        imageUrl = strDrinkThumb.orEmpty(),
+        instructions = strInstructions.orEmpty(),
+        isFavorite = false,
+        ingredients = ingredients
+    )
+}
+
+private fun formatIngredient(ingredient: String?, measure: String?): String? {
+    if (ingredient.isNullOrBlank()) return null
+    return "${measure.orEmpty().trim()} ${ingredient.trim()}".trim()
+}
+
 @Composable
 fun NavigationDrawerContent(
     onClose: () -> Unit,
@@ -122,6 +172,7 @@ fun NavigationDrawerContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation(
     viewModel: CocktailViewModel,
@@ -131,52 +182,132 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
 
+
+    // Automatyczne pobranie z API przy uruchomieniu
+    LaunchedEffect(Unit) {
+        viewModel.fetchCocktailsByFirstLetter("a")
+    }
+
     NavHost(navController = navController, startDestination = "list") {
         composable("list") {
-            val cocktails by viewModel.allCocktails.observeAsState(emptyList())
+            var selectedLetter by remember { mutableStateOf("A") }
+            val apiCocktails by viewModel.apiCocktails.observeAsState(emptyList())
 
-            CocktailList(
-                navController = navController,
-                cocktails = cocktails.map {
-                    Cocktail(it.name, it.imageResId, it.isFavourite)  // Use the actual imageResId from DB
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text("Lista koktajli") },
+                        navigationIcon = {
+                            IconButton(onClick = onMenuClick) {
+                                Icon(Icons.Default.Menu, contentDescription = "Menu")
+                            }
+                        }
+                    )
                 },
-                showFavorites = showFavorites,
-                onCocktailSelected = { name -> navController.navigate("detail/$name") },
-                onMenuClick = onMenuClick,
-                onFavoriteToggle = { name ->
-                    val cocktail = cocktails.find { it.name == name }
-                    cocktail?.let {
-                        viewModel.updateCocktail(it.copy(isFavourite = !it.isFavourite))
+                floatingActionButton = {
+                    FloatingActionButton(onClick = { /* np. dodawanie koktajlu */ }) {
+                        Icon(Icons.Default.Add, contentDescription = "Dodaj")
                     }
                 }
-            )
+            ) { innerPadding ->
+                Column(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize()
+                ) {
+                    LetterSelector(
+                        selectedLetter = selectedLetter,
+                        onLetterSelected = {
+                            selectedLetter = it
+                            viewModel.fetchCocktailsByFirstLetter(it.lowercase())
+                        }
+                    )
+
+                    CocktailList(
+                        navController = navController,
+                        cocktails = apiCocktails.map { it.toCocktail() }.filter { !showFavorites || it.isFavorite },
+//                        cocktails = apiCocktails.map {
+//                            Cocktail(
+//                                name = it.strDrink ?: "Unknown",
+//                                imageUrl = it.strDrinkThumb ?: "",
+//                                instructions = it.strInstructions ?: "",
+//                                isFavorite = false
+//                            )
+//                        }.filter { !showFavorites || it.isFavorite },
+                        showFavorites = showFavorites,
+                        onCocktailSelected = { name ->
+                            navController.navigate("detail/$name")
+                        },
+                        onMenuClick = onMenuClick,
+                        onFavoriteToggle = onFavoriteToggle
+                    )
+                }
+            }
         }
+
         composable(
             "detail/{cocktailName}",
             arguments = listOf(navArgument("cocktailName") { type = NavType.StringType })
         ) { backStackEntry ->
-            val cocktails by viewModel.allCocktails.observeAsState(emptyList())
             val cocktailName = backStackEntry.arguments?.getString("cocktailName")
+            val apiCocktails by viewModel.apiCocktails.observeAsState(emptyList())
+
+            val selectedCocktail = apiCocktails.find { it.strDrink == cocktailName }
 
             CocktailDetail(
                 navController = navController,
                 cocktailName = cocktailName,
-                cocktails = cocktails.map {
-                    Cocktail(it.name, 0, it.isFavourite)
-                },
+                cocktails = apiCocktails.map { it.toCocktail() }
+                    .filter { !showFavorites || it.isFavorite },
+//                cocktails = listOfNotNull(selectedCocktail).map {
+//                    Cocktail(
+//                        name = it.strDrink ?: "Unknown",
+//                        imageUrl = it.strDrinkThumb ?: "",
+//                        instructions = it.strInstructions ?: "",
+//                        isFavorite = false
+//                    )
+//                },
                 onMenuClick = onMenuClick,
                 onFavoriteToggle = { name ->
-                    val cocktail = cocktails.find { it.name == name }
-                    cocktail?.let {
-                        viewModel.updateCocktail(it.copy(isFavourite = !it.isFavourite))
-                    }
+                    onFavoriteToggle(name)
                 }
             )
         }
+
         composable("add") {
             AddCocktailScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+@Composable
+fun LetterSelector(
+    selectedLetter: String,
+    onLetterSelected: (String) -> Unit
+) {
+    val letters = ('A'..'Z').toList()
+
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        items(letters) { letter ->
+            val isSelected = selectedLetter.equals(letter.toString(), ignoreCase = true)
+            Text(
+                text = letter.toString(),
+                modifier = Modifier
+                    .padding(4.dp)
+                    .background(
+                        if (isSelected) Color.Gray else Color.LightGray,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onLetterSelected(letter.toString()) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                color = if (isSelected) Color.White else Color.Black
             )
         }
     }
@@ -253,87 +384,69 @@ fun CocktailList(
     cocktails: List<Cocktail>,
     showFavorites: Boolean,
     onCocktailSelected: (String) -> Unit,
-    onMenuClick: () -> Unit,
-    onFavoriteToggle: (String) -> Unit
-) {
+    onFavoriteToggle: (String) -> Unit,
+    onMenuClick: () -> Unit
+    ) {
     val displayedCocktails = if (showFavorites) {
         cocktails.filter { it.isFavorite }
     } else {
         cocktails
     }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (showFavorites) "Ulubione" else "Lista koktajli") },
-                navigationIcon = {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("add") }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Cocktail")
-            }
-        }
-    ) { innerPadding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            items(displayedCocktails) { cocktail ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onCocktailSelected(cocktail.name) },
-                    elevation = CardDefaults.cardElevation(4.dp)
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(displayedCocktails) { cocktail ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onCocktailSelected(cocktail.name) },
+                elevation = CardDefaults.cardElevation(4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier.padding(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (cocktail.imageRes != null) {
-                            Image(
-                                painter = painterResource(id = cocktail.imageRes),
-                                contentDescription = cocktail.name,
-                                modifier = Modifier
-                                    .height(120.dp)
-                                    .fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        } else {
-                            // Show a placeholder or empty space when there's no image
-                            Box(
-                                modifier = Modifier
-                                    .height(120.dp)
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Text(
-                                    text = "No Image",
-                                    modifier = Modifier.align(Alignment.Center),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(cocktail.name, style = MaterialTheme.typography.titleMedium)
-                        IconButton(
-                            onClick = { onFavoriteToggle(cocktail.name) },
-                            modifier = Modifier.align(Alignment.End)
+                    if (cocktail.imageUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = cocktail.imageUrl,
+                            contentDescription = cocktail.name,
+                            modifier = Modifier
+                                .height(120.dp)
+                                .fillMaxWidth()
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .height(120.dp)
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
-                            Icon(
-                                imageVector = if (cocktail.isFavorite)
-                                    Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Ulubione",
-                                tint = if (cocktail.isFavorite)
-                                    MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            Text(
+                                text = "No Image",
+                                modifier = Modifier.align(Alignment.Center),
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(cocktail.name, style = MaterialTheme.typography.titleMedium)
+                    IconButton(
+                        onClick = { onFavoriteToggle(cocktail.name) },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(
+                            imageVector = if (cocktail.isFavorite)
+                                Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Ulubione",
+                            tint = if (cocktail.isFavorite)
+                                MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
@@ -366,16 +479,12 @@ fun CocktailDetail(
         )
     }
 
-    val selected = cocktailName ?: "Mojito"
+    val selected = cocktailName ?: return
     val cocktail = cocktails.find { it.name == selected }
 
-    // For custom cocktails, use default values
-    val (ingredients, preparation) = if (defaultCocktailsDetails.containsKey(selected)) {
-        defaultCocktailsDetails[selected] ?: (emptyList<String>() to "Brak danych")
-    } else {
-        // Default values for custom cocktails
-        listOf("Składniki nieznane") to "Przepis nieznany. Dodaj składniki i instrukcje przygotowania."
-    }
+    // val ingredients = listOf("Brak składników") //cocktail?.ingredients ?: listOf("Brak składników")
+    val ingredients = cocktail?.ingredients ?: defaultCocktailsDetails[selected]?.first ?: listOf("Brak składników")
+    val preparation = cocktail?.instructions ?: "Brak instrukcji"
 
 
     var showMessage by rememberSaveable { mutableStateOf(false) }
