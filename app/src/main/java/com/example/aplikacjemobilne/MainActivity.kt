@@ -44,7 +44,11 @@ import com.example.aplikacjemobilne.ui.theme.AplikacjeMobilneTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import com.example.aplikacjemobilne.mapper.toCocktail
+import com.example.aplikacjemobilne.model.Cocktail
 import com.example.aplikacjemobilne.model.Drink
+import com.example.aplikacjemobilne.CocktailViewModel
+import com.example.aplikacjemobilne.data.CocktailDB
 
 
 class MainActivity : ComponentActivity() {
@@ -79,8 +83,9 @@ class MainActivity : ComponentActivity() {
                         viewModel = viewModel,
                         showFavorites = showFavorites,
                         onMenuClick = { scope.launch { drawerState.open() } },
-                        onFavoriteToggle = { name ->
-                            // Handled in the AppNavigation now
+                        onFavoriteToggle = { cocktail: Cocktail ->
+                            // teraz przekazujemy cały obiekt Cocktail
+                            viewModel.toggleFavorite(cocktail)
                         }
                     )
                 }
@@ -96,13 +101,15 @@ data class CocktailLocalDB(
     val isFavorite: Boolean
 )
 
-data class Cocktail(
-    val name: String,
-    val imageUrl: String,
-    val instructions: String,
-    val isFavorite: Boolean,
-    val ingredients: List<String> = emptyList()
-)
+fun CocktailDB.toCocktail(): Cocktail {
+    return Cocktail(
+        name = this.name,
+        imageUrl = this.imageUrl,
+        instructions = this.instructions,
+        isFavorite = this.isFavourite,
+        ingredients = this.ingredients.split(";").filter { it.isNotBlank() }
+    )
+}
 
 fun Drink.toCocktail(): Cocktail {
     val ingredients = listOfNotNull(
@@ -132,7 +139,7 @@ fun Drink.toCocktail(): Cocktail {
     )
 }
 
-private fun formatIngredient(ingredient: String?, measure: String?): String? {
+fun formatIngredient(ingredient: String?, measure: String?): String? {
     if (ingredient.isNullOrBlank()) return null
     return "${measure.orEmpty().trim()} ${ingredient.trim()}".trim()
 }
@@ -178,20 +185,34 @@ fun AppNavigation(
     viewModel: CocktailViewModel,
     showFavorites: Boolean,
     onMenuClick: () -> Unit,
-    onFavoriteToggle: (String) -> Unit
+    onFavoriteToggle: (Cocktail) -> Unit
 ) {
     val navController = rememberNavController()
 
-
-    // Automatyczne pobranie z API przy uruchomieniu
+    // 1) Automatyczne pobranie z API przy starcie
     LaunchedEffect(Unit) {
         viewModel.fetchCocktailsByFirstLetter("a")
+    }
+
+    // 2) Obserwujemy LiveData z ViewModelu
+    val apiDrinks by viewModel.apiCocktails.observeAsState(emptyList())
+    val favDB    by viewModel.favouriteDB.observeAsState(emptyList())
+
+    // 3) Wybieramy źródło danych
+    val favNames = favDB.map { it.name }.toSet()
+
+    val cocktails: List<Cocktail> = if (showFavorites) {
+        favDB.map { it.toCocktail() }
+    } else {
+        apiDrinks.map { drink ->
+            val base = drink.toCocktail()
+            if (favNames.contains(base.name)) base.copy(isFavorite = true) else base
+        }
     }
 
     NavHost(navController = navController, startDestination = "list") {
         composable("list") {
             var selectedLetter by remember { mutableStateOf("A") }
-            val apiCocktails by viewModel.apiCocktails.observeAsState(emptyList())
 
             Scaffold(
                 topBar = {
@@ -205,7 +226,7 @@ fun AppNavigation(
                     )
                 },
                 floatingActionButton = {
-                    FloatingActionButton(onClick = { /* np. dodawanie koktajlu */ }) {
+                    FloatingActionButton(onClick = { navController.navigate("add") }) {
                         Icon(Icons.Default.Add, contentDescription = "Dodaj")
                     }
                 }
@@ -217,29 +238,23 @@ fun AppNavigation(
                 ) {
                     LetterSelector(
                         selectedLetter = selectedLetter,
-                        onLetterSelected = {
-                            selectedLetter = it
-                            viewModel.fetchCocktailsByFirstLetter(it.lowercase())
+                        onLetterSelected = { letter ->
+                            selectedLetter = letter
+                            viewModel.fetchCocktailsByFirstLetter(letter.lowercase())
                         }
                     )
 
                     CocktailList(
                         navController = navController,
-                        cocktails = apiCocktails.map { it.toCocktail() }.filter { !showFavorites || it.isFavorite },
-//                        cocktails = apiCocktails.map {
-//                            Cocktail(
-//                                name = it.strDrink ?: "Unknown",
-//                                imageUrl = it.strDrinkThumb ?: "",
-//                                instructions = it.strInstructions ?: "",
-//                                isFavorite = false
-//                            )
-//                        }.filter { !showFavorites || it.isFavorite },
+                        cocktails = cocktails,
                         showFavorites = showFavorites,
                         onCocktailSelected = { name ->
                             navController.navigate("detail/$name")
                         },
-                        onMenuClick = onMenuClick,
-                        onFavoriteToggle = onFavoriteToggle
+                        onFavoriteToggle = { cocktail ->
+                            onFavoriteToggle(cocktail)
+                        },
+                        onMenuClick = onMenuClick
                     )
                 }
             }
@@ -249,27 +264,16 @@ fun AppNavigation(
             "detail/{cocktailName}",
             arguments = listOf(navArgument("cocktailName") { type = NavType.StringType })
         ) { backStackEntry ->
-            val cocktailName = backStackEntry.arguments?.getString("cocktailName")
-            val apiCocktails by viewModel.apiCocktails.observeAsState(emptyList())
+            val nameArg = backStackEntry.arguments?.getString("cocktailName") ?: return@composable
 
-            val selectedCocktail = apiCocktails.find { it.strDrink == cocktailName }
 
             CocktailDetail(
                 navController = navController,
-                cocktailName = cocktailName,
-                cocktails = apiCocktails.map { it.toCocktail() }
-                    .filter { !showFavorites || it.isFavorite },
-//                cocktails = listOfNotNull(selectedCocktail).map {
-//                    Cocktail(
-//                        name = it.strDrink ?: "Unknown",
-//                        imageUrl = it.strDrinkThumb ?: "",
-//                        instructions = it.strInstructions ?: "",
-//                        isFavorite = false
-//                    )
-//                },
+                cocktailName = nameArg,
+                cocktails = cocktails,
                 onMenuClick = onMenuClick,
-                onFavoriteToggle = { name ->
-                    onFavoriteToggle(name)
+                onFavoriteToggle = { cocktail ->
+                    onFavoriteToggle(cocktail)
                 }
             )
         }
@@ -384,7 +388,7 @@ fun CocktailList(
     cocktails: List<Cocktail>,
     showFavorites: Boolean,
     onCocktailSelected: (String) -> Unit,
-    onFavoriteToggle: (String) -> Unit,
+    onFavoriteToggle: (Cocktail) -> Unit,
     onMenuClick: () -> Unit
     ) {
     val displayedCocktails = if (showFavorites) {
@@ -437,7 +441,7 @@ fun CocktailList(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(cocktail.name, style = MaterialTheme.typography.titleMedium)
                     IconButton(
-                        onClick = { onFavoriteToggle(cocktail.name) },
+                        onClick = { onFavoriteToggle(cocktail) },
                         modifier = Modifier.align(Alignment.End)
                     ) {
                         Icon(
@@ -461,7 +465,7 @@ fun CocktailDetail(
     cocktailName: String?,
     cocktails: List<Cocktail>,
     onMenuClick: () -> Unit,
-    onFavoriteToggle: (String) -> Unit
+    onFavoriteToggle: (Cocktail) -> Unit
 ) {
     // Default details for predefined cocktails
     val defaultCocktailsDetails = remember {
@@ -513,7 +517,7 @@ fun CocktailDetail(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { onFavoriteToggle(selected) }) {
+                    IconButton(onClick = { cocktail?.let { onFavoriteToggle(it) } }) {
                         Icon(
                             imageVector = if (cocktail?.isFavorite == true)
                                 Icons.Default.Favorite else Icons.Default.FavoriteBorder,

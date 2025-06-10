@@ -2,6 +2,11 @@ package com.example.aplikacjemobilne
 
 import android.app.Application
 import androidx.lifecycle.*
+import androidx.room.PrimaryKey
+import com.example.aplikacjemobilne.data.AppDatabase
+import com.example.aplikacjemobilne.model.Cocktail
+import com.example.aplikacjemobilne.data.CocktailDB
+import com.example.aplikacjemobilne.mapper.toCocktailDB
 import com.example.aplikacjemobilne.model.Drink
 import com.example.aplikacjemobilne.model.ListResponse
 import com.example.aplikacjemobilne.retrofit.RetrofitClient
@@ -15,7 +20,7 @@ class CocktailViewModel(application: Application) : AndroidViewModel(application
     private val cocktailDao = AppDatabase.getInstance(application).cocktailDao()
 
     // Dane z lokalnej bazy danych
-    val allCocktails: LiveData<List<CocktailDB>> = cocktailDao.getAllCocktails()
+    val favouriteDB: LiveData<List<CocktailDB>> = cocktailDao.getAllCocktails()
 
     // 🔽 Dane z API
     private val _apiCocktails = MutableLiveData<List<Drink>>()
@@ -26,13 +31,33 @@ class CocktailViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             cocktailDao.insertCocktail(
                 CocktailDB(
-                    name = name,
-                    isFavourite = isFavourite,
-                    imageResId = imageResId
+                    name = name,   // klucz naturalny
+                    imageUrl= "",
+                    instructions = "",
+                    ingredients = "",        // np. "50ml Rum;Soda;Mięta"
+                    isFavourite = true
                 )
             )
         }
     }
+
+    fun toggleFavorite(cocktail: Cocktail) = viewModelScope.launch {
+        val existing = cocktailDao.getCocktailByName(cocktail.name)
+        if (existing != null) {
+            cocktailDao.deleteCocktail(existing)
+        } else {
+            cocktailDao.insertCocktail(
+                CocktailDB(
+                    name = cocktail.name,
+                    imageUrl = cocktail.imageUrl,
+                    instructions = cocktail.instructions,
+                    ingredients = cocktail.ingredients.joinToString(";"),
+                    isFavourite = true
+                )
+            )
+        }
+    }
+
 
     fun updateCocktail(cocktail: CocktailDB) {
         viewModelScope.launch {
@@ -82,4 +107,6 @@ class CocktailViewModel(application: Application) : AndroidViewModel(application
                 }
             })
     }
+
+
 }
